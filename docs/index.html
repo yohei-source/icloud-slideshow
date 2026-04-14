@@ -58,6 +58,44 @@
     z-index: 10;
     pointer-events: none;
   }
+  #pause-ring {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px; height: 80px;
+    z-index: 30;
+    pointer-events: none;
+    display: none;
+  }
+  #pause-ring circle {
+    fill: none;
+    stroke: rgba(255,255,255,0.5);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 226;
+    stroke-dashoffset: 0;
+    transform: rotate(-90deg);
+    transform-origin: center;
+  }
+  #pause-ring.active { display: block; }
+  #pause-ring.active circle {
+    animation: countdown 60s linear forwards;
+  }
+  @keyframes countdown {
+    from { stroke-dashoffset: 0; }
+    to { stroke-dashoffset: 226; }
+  }
+  #pause-icon {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 31;
+    pointer-events: none;
+    display: none;
+    color: rgba(255,255,255,0.5);
+    font-size: 24px;
+  }
+  #pause-icon.active { display: block; }
 </style>
 </head>
 <body>
@@ -66,12 +104,13 @@
 <div id="clock"></div>
 <div id="counter"></div>
 <div id="status">Loading...</div>
+<svg id="pause-ring" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/></svg>
+<div id="pause-icon">&#10074;&#10074;</div>
 
 <script>
 (function() {
   'use strict';
 
-  // URL params: ?interval=10 (seconds), ?shuffle=1, ?clock=0
   const params = new URLSearchParams(location.search);
   const INTERVAL = (parseInt(params.get('interval')) || 15) * 1000;
   const SHUFFLE = params.get('shuffle') !== '0';
@@ -82,11 +121,15 @@
   const clockEl = document.getElementById('clock');
   const counterEl = document.getElementById('counter');
   const statusEl = document.getElementById('status');
+  const pauseRing = document.getElementById('pause-ring');
+  const pauseIcon = document.getElementById('pause-icon');
 
   let photos = [];
   let currentIndex = -1;
   let activeSlide = 'a';
   let timer = null;
+  let paused = false;
+  let pauseTimer = null;
 
   // Clock
   if (SHOW_CLOCK) {
@@ -189,7 +232,6 @@
         outgoing.classList.remove('active');
         activeSlide = activeSlide === 'a' ? 'b' : 'a';
         video.play();
-        // Safety: max 120s per video, or advance on ended
         const maxTimer = setTimeout(() => { video.pause(); video.src = ''; scheduleNext(0); }, 120000);
         video.onended = () => { clearTimeout(maxTimer); scheduleNext(0); };
         video.onerror = () => { clearTimeout(maxTimer); scheduleNext(0); };
@@ -203,7 +245,6 @@
         activeSlide = activeSlide === 'a' ? 'b' : 'a';
       }
     } catch (e) {
-      // Failed to load - skip with small delay to prevent tight loop
       scheduleNext(100);
       return;
     }
@@ -234,17 +275,70 @@
   // Auto-reload photos.json every hour
   setInterval(loadPhotos, 3600000);
 
-  // Tap to toggle pause (for debugging, not visible in kiosk)
-  let paused = false;
-  document.body.addEventListener('click', () => {
-    if (paused) {
-      showNext();
+  // --- Touch controls ---
+  const PAUSE_DURATION = 60000;
+
+  function startPause() {
+    if (timer) clearTimeout(timer);
+    paused = true;
+    pauseRing.classList.remove('active');
+    pauseIcon.classList.remove('active');
+    void pauseRing.offsetWidth;
+    pauseRing.classList.add('active');
+    pauseIcon.classList.add('active');
+    if (pauseTimer) clearTimeout(pauseTimer);
+    pauseTimer = setTimeout(resumePlay, PAUSE_DURATION);
+  }
+
+  function resumePlay() {
+    paused = false;
+    pauseRing.classList.remove('active');
+    pauseIcon.classList.remove('active');
+    if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+    scheduleNext(INTERVAL);
+  }
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchMoved = false;
+
+  document.body.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchMoved = false;
+  }, { passive: true });
+
+  document.body.addEventListener('touchmove', (e) => {
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 30 || Math.abs(dy) > 30) touchMoved = true;
+  }, { passive: true });
+
+  document.body.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(e.changedTouches[0].clientY - touchStartY) * 2) {
+      // Swipe
+      if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
       paused = false;
-    } else {
+      pauseRing.classList.remove('active');
+      pauseIcon.classList.remove('active');
       if (timer) clearTimeout(timer);
-      paused = true;
+      if (dx > 0) {
+        showNext();
+      } else {
+        currentIndex = Math.max(currentIndex - 2, -1);
+        showNext();
+      }
+    } else if (!touchMoved) {
+      // Tap
+      if (paused) {
+        resumePlay();
+      } else {
+        startPause();
+      }
     }
-  });
+  }, { passive: true });
 
   loadPhotos();
 })();
