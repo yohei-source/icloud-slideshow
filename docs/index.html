@@ -189,11 +189,10 @@
         outgoing.classList.remove('active');
         activeSlide = activeSlide === 'a' ? 'b' : 'a';
         video.play();
-        // Safety: max 60s per video, or advance on ended
-        const maxTimer = setTimeout(() => { video.pause(); video.src = ''; scheduleNext(0); }, 60000);
+        // Safety: max 120s per video, or advance on ended
+        const maxTimer = setTimeout(() => { video.pause(); video.src = ''; scheduleNext(0); }, 120000);
         video.onended = () => { clearTimeout(maxTimer); scheduleNext(0); };
         video.onerror = () => { clearTimeout(maxTimer); scheduleNext(0); };
-        video.onstalled = () => { clearTimeout(maxTimer); video.pause(); video.src = ''; scheduleNext(0); };
         return;
       } else {
         const img = await preloadImage(photo.url);
