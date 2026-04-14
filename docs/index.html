@@ -73,7 +73,7 @@
 
   // URL params: ?interval=10 (seconds), ?shuffle=1, ?clock=0
   const params = new URLSearchParams(location.search);
-  const INTERVAL = (parseInt(params.get('interval')) || 10) * 1000;
+  const INTERVAL = (parseInt(params.get('interval')) || 15) * 1000;
   const SHUFFLE = params.get('shuffle') !== '0';
   const SHOW_CLOCK = params.get('clock') !== '0';
 
