@@ -32,7 +32,7 @@
   #clock {
     position: fixed;
     bottom: env(safe-area-inset-bottom, 20px);
-    right: 20px;
+    left: 20px;
     color: rgba(255,255,255,0.6);
     font-size: 2.5vw;
     font-weight: 300;
@@ -52,7 +52,8 @@
   #counter {
     position: fixed;
     bottom: env(safe-area-inset-bottom, 20px);
-    left: 20px;
+    left: 50%;
+    transform: translateX(-50%);
     color: rgba(255,255,255,0.3);
     font-size: 1.5vw;
     z-index: 10;
@@ -60,9 +61,9 @@
   }
   #pause-ring {
     position: fixed;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    width: 80px; height: 80px;
+    bottom: env(safe-area-inset-bottom, 20px);
+    right: 20px;
+    width: 60px; height: 60px;
     z-index: 30;
     pointer-events: none;
     display: none;
@@ -87,8 +88,8 @@
   }
   #pause-icon {
     position: fixed;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
+    bottom: calc(env(safe-area-inset-bottom, 20px) + 18px);
+    right: 38px;
     z-index: 31;
     pointer-events: none;
     display: none;
