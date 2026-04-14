@@ -128,28 +128,36 @@
     return a;
   }
 
-  // Preload image
+  // Preload image with timeout
   function preloadImage(url) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
+      const timeout = setTimeout(() => { img.src = ''; reject(new Error('Image timeout')); }, 8000);
+      img.onload = () => { clearTimeout(timeout); resolve(img); };
+      img.onerror = () => { clearTimeout(timeout); reject(new Error('Image error')); };
       img.src = url;
     });
   }
 
-  // Prepare video element
+  // Prepare video with timeout
   function prepareVideo(url) {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
-      video.src = url;
       video.muted = true;
       video.playsInline = true;
       video.autoplay = true;
-      video.oncanplay = () => resolve(video);
-      video.onerror = reject;
+      const timeout = setTimeout(() => { video.src = ''; reject(new Error('Video timeout')); }, 8000);
+      video.oncanplay = () => { clearTimeout(timeout); resolve(video); };
+      video.onerror = () => { clearTimeout(timeout); reject(new Error('Video error')); };
+      video.src = url;
       video.load();
     });
+  }
+
+  // Schedule next (always async via setTimeout to prevent stack overflow)
+  function scheduleNext(delay) {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(showNext, delay);
   }
 
   // Show next item
@@ -157,7 +165,6 @@
     if (photos.length === 0) return;
 
     currentIndex = (currentIndex + 1) % photos.length;
-    // Reshuffle at end of cycle
     if (currentIndex === 0 && SHUFFLE) {
       photos = shuffle(photos);
     }
@@ -169,36 +176,40 @@
       const incoming = activeSlide === 'a' ? slideB : slideA;
       const outgoing = activeSlide === 'a' ? slideA : slideB;
 
-      // Stop any playing video in outgoing slide
+      // Clean up outgoing slide
       const oldVideo = outgoing.querySelector('video');
-      if (oldVideo) { oldVideo.pause(); oldVideo.src = ''; }
-
-      incoming.innerHTML = '';
+      if (oldVideo) { oldVideo.pause(); oldVideo.src = ''; oldVideo.load(); }
+      outgoing.innerHTML = '';
 
       if (photo.type === 'video') {
         const video = await prepareVideo(photo.url);
+        incoming.innerHTML = '';
         incoming.appendChild(video);
         incoming.classList.add('active');
         outgoing.classList.remove('active');
         activeSlide = activeSlide === 'a' ? 'b' : 'a';
         video.play();
-        // Wait for video to end, then advance
-        video.onended = () => showNext();
+        // Safety: max 60s per video, or advance on ended
+        const maxTimer = setTimeout(() => { video.pause(); video.src = ''; scheduleNext(0); }, 60000);
+        video.onended = () => { clearTimeout(maxTimer); scheduleNext(0); };
+        video.onerror = () => { clearTimeout(maxTimer); scheduleNext(0); };
+        video.onstalled = () => { clearTimeout(maxTimer); video.pause(); video.src = ''; scheduleNext(0); };
         return;
       } else {
         const img = await preloadImage(photo.url);
+        incoming.innerHTML = '';
         incoming.appendChild(img);
         incoming.classList.add('active');
         outgoing.classList.remove('active');
         activeSlide = activeSlide === 'a' ? 'b' : 'a';
       }
     } catch (e) {
-      console.warn('Failed to load:', photo.url);
-      showNext();
+      // Failed to load - skip with small delay to prevent tight loop
+      scheduleNext(100);
       return;
     }
 
-    timer = setTimeout(showNext, INTERVAL);
+    scheduleNext(INTERVAL);
   }
 
   // Load photos.json
