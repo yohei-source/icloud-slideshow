@@ -25,7 +25,7 @@
     transition: opacity 1.5s ease-in-out;
   }
   .slide.active { opacity: 1; }
-  .slide img {
+  .slide img, .slide video {
     max-width: 100%; max-height: 100%;
     object-fit: contain;
   }
@@ -129,7 +129,7 @@
   }
 
   // Preload image
-  function preload(url) {
+  function preloadImage(url) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
@@ -138,7 +138,21 @@
     });
   }
 
-  // Show next photo
+  // Prepare video element
+  function prepareVideo(url) {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.src = url;
+      video.muted = true;
+      video.playsInline = true;
+      video.autoplay = true;
+      video.oncanplay = () => resolve(video);
+      video.onerror = reject;
+      video.load();
+    });
+  }
+
+  // Show next item
   async function showNext() {
     if (photos.length === 0) return;
 
@@ -152,19 +166,34 @@
     counterEl.textContent = `${currentIndex + 1} / ${photos.length}`;
 
     try {
-      const img = await preload(photo.url);
       const incoming = activeSlide === 'a' ? slideB : slideA;
       const outgoing = activeSlide === 'a' ? slideA : slideB;
 
-      incoming.innerHTML = '';
-      incoming.appendChild(img);
-      incoming.classList.add('active');
-      outgoing.classList.remove('active');
+      // Stop any playing video in outgoing slide
+      const oldVideo = outgoing.querySelector('video');
+      if (oldVideo) { oldVideo.pause(); oldVideo.src = ''; }
 
-      activeSlide = activeSlide === 'a' ? 'b' : 'a';
+      incoming.innerHTML = '';
+
+      if (photo.type === 'video') {
+        const video = await prepareVideo(photo.url);
+        incoming.appendChild(video);
+        incoming.classList.add('active');
+        outgoing.classList.remove('active');
+        activeSlide = activeSlide === 'a' ? 'b' : 'a';
+        video.play();
+        // Wait for video to end, then advance
+        video.onended = () => showNext();
+        return;
+      } else {
+        const img = await preloadImage(photo.url);
+        incoming.appendChild(img);
+        incoming.classList.add('active');
+        outgoing.classList.remove('active');
+        activeSlide = activeSlide === 'a' ? 'b' : 'a';
+      }
     } catch (e) {
       console.warn('Failed to load:', photo.url);
-      // Skip to next
       showNext();
       return;
     }

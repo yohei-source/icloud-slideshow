@@ -71,7 +71,8 @@ async function main() {
   const stream = await httpsPost(`${baseUrl}/webstream`, { streamCtag: null });
 
   const photos = stream.photos || [];
-  console.log(`Found ${photos.length} photos`);
+  const videoCount = photos.filter((p) => p.mediaAssetType === 'video').length;
+  console.log(`Found ${photos.length} items (${videoCount} videos, ${photos.length - videoCount} photos)`);
 
   if (photos.length === 0) {
     console.log('No photos found. Writing empty array.');
@@ -107,11 +108,14 @@ async function main() {
   // Match photos with their best-quality derivative
   const result = [];
   for (const photo of photos) {
+    const isVideo = photo.mediaAssetType === 'video';
     const derivatives = photo.derivatives || {};
-    // Pick largest derivative (highest pixel count)
+
     let best = null;
     let bestPixels = 0;
     for (const [key, deriv] of Object.entries(derivatives)) {
+      // For videos, prefer highest resolution video (skip PosterFrame)
+      if (isVideo && key === 'PosterFrame') continue;
       const pixels = (parseInt(deriv.width) || 0) * (parseInt(deriv.height) || 0);
       if (pixels > bestPixels) {
         bestPixels = pixels;
@@ -119,11 +123,11 @@ async function main() {
       }
     }
     if (best && best.checksum) {
-      // Find matching asset URL
       const asset = allAssets.find((a) => a.checksum === best.checksum);
       if (asset) {
         result.push({
           guid: photo.photoGuid,
+          type: isVideo ? 'video' : 'photo',
           url: asset.url,
           width: parseInt(best.width) || 0,
           height: parseInt(best.height) || 0,
