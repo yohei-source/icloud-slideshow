@@ -279,9 +279,16 @@
   // --- Touch controls ---
   const PAUSE_DURATION = 60000;
 
+  function getActiveVideo() {
+    const active = activeSlide === 'a' ? slideA : slideB;
+    return active.querySelector('video');
+  }
+
   function startPause() {
     if (timer) clearTimeout(timer);
     paused = true;
+    const video = getActiveVideo();
+    if (video) video.pause();
     pauseRing.classList.remove('active');
     pauseIcon.classList.remove('active');
     void pauseRing.offsetWidth;
@@ -296,6 +303,8 @@
     pauseRing.classList.remove('active');
     pauseIcon.classList.remove('active');
     if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+    const video = getActiveVideo();
+    if (video) { video.play(); return; }
     scheduleNext(INTERVAL);
   }
 
