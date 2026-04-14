@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Slideshow">
+<link rel="manifest" href="manifest.json">
+<title>Photo Slideshow</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    cursor: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity 1.5s ease-in-out;
+  }
+  .slide.active { opacity: 1; }
+  .slide img {
+    max-width: 100%; max-height: 100%;
+    object-fit: contain;
+  }
+  #clock {
+    position: fixed;
+    bottom: env(safe-area-inset-bottom, 20px);
+    right: 20px;
+    color: rgba(255,255,255,0.6);
+    font-size: 2.5vw;
+    font-weight: 300;
+    letter-spacing: 0.05em;
+    z-index: 10;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    pointer-events: none;
+  }
+  #status {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255,255,255,0.5);
+    font-size: 1.2em;
+    z-index: 20;
+  }
+  #counter {
+    position: fixed;
+    bottom: env(safe-area-inset-bottom, 20px);
+    left: 20px;
+    color: rgba(255,255,255,0.3);
+    font-size: 1.5vw;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="slide-a" class="slide"></div>
+<div id="slide-b" class="slide"></div>
+<div id="clock"></div>
+<div id="counter"></div>
+<div id="status">Loading...</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // URL params: ?interval=10 (seconds), ?shuffle=1, ?clock=0
+  const params = new URLSearchParams(location.search);
+  const INTERVAL = (parseInt(params.get('interval')) || 10) * 1000;
+  const SHUFFLE = params.get('shuffle') !== '0';
+  const SHOW_CLOCK = params.get('clock') !== '0';
+
+  const slideA = document.getElementById('slide-a');
+  const slideB = document.getElementById('slide-b');
+  const clockEl = document.getElementById('clock');
+  const counterEl = document.getElementById('counter');
+  const statusEl = document.getElementById('status');
+
+  let photos = [];
+  let currentIndex = -1;
+  let activeSlide = 'a';
+  let timer = null;
+
+  // Clock
+  if (SHOW_CLOCK) {
+    function updateClock() {
+      const now = new Date();
+      clockEl.textContent = now.toLocaleTimeString('ja-JP', {
+        hour: '2-digit', minute: '2-digit'
+      });
+    }
+    updateClock();
+    setInterval(updateClock, 10000);
+  } else {
+    clockEl.style.display = 'none';
+  }
+
+  // Wake Lock
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator) {
+        const lock = await navigator.wakeLock.request('screen');
+        lock.addEventListener('release', () => {
+          setTimeout(requestWakeLock, 1000);
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+  requestWakeLock();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestWakeLock();
+  });
+
+  // Shuffle array (Fisher-Yates)
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Preload image
+  function preload(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  // Show next photo
+  async function showNext() {
+    if (photos.length === 0) return;
+
+    currentIndex = (currentIndex + 1) % photos.length;
+    // Reshuffle at end of cycle
+    if (currentIndex === 0 && SHUFFLE) {
+      photos = shuffle(photos);
+    }
+
+    const photo = photos[currentIndex];
+    counterEl.textContent = `${currentIndex + 1} / ${photos.length}`;
+
+    try {
+      const img = await preload(photo.url);
+      const incoming = activeSlide === 'a' ? slideB : slideA;
+      const outgoing = activeSlide === 'a' ? slideA : slideB;
+
+      incoming.innerHTML = '';
+      incoming.appendChild(img);
+      incoming.classList.add('active');
+      outgoing.classList.remove('active');
+
+      activeSlide = activeSlide === 'a' ? 'b' : 'a';
+    } catch (e) {
+      console.warn('Failed to load:', photo.url);
+      // Skip to next
+      showNext();
+      return;
+    }
+
+    timer = setTimeout(showNext, INTERVAL);
+  }
+
+  // Load photos.json
+  async function loadPhotos() {
+    try {
+      const res = await fetch('photos.json?t=' + Date.now());
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        statusEl.textContent = 'No photos found';
+        return;
+      }
+      photos = SHUFFLE ? shuffle(data) : data;
+      statusEl.style.display = 'none';
+      currentIndex = -1;
+      if (timer) clearTimeout(timer);
+      showNext();
+    } catch (e) {
+      statusEl.textContent = 'Error loading photos';
+      console.error(e);
+    }
+  }
+
+  // Auto-reload photos.json every hour
+  setInterval(loadPhotos, 3600000);
+
+  // Tap to toggle pause (for debugging, not visible in kiosk)
+  let paused = false;
+  document.body.addEventListener('click', () => {
+    if (paused) {
+      showNext();
+      paused = false;
+    } else {
+      if (timer) clearTimeout(timer);
+      paused = true;
+    }
+  });
+
+  loadPhotos();
+})();
+</script>
+</body>
+</html>
