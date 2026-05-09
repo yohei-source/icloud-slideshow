@@ -112,6 +112,10 @@
 (function() {
   'use strict';
 
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
   const params = new URLSearchParams(location.search);
   const INTERVAL = (parseInt(params.get('interval')) || 15) * 1000;
   const SHUFFLE = params.get('shuffle') !== '0';
